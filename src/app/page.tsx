@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { Trash, Pencil } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -37,10 +38,23 @@ type Task = {
   text: string;
 };
 
+const LOCAL_STORAGE_KEY = "tasks-list";
+
 export default function Home() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [taskToEdit, setTaskToEdit] = useState<Task | null>(null);
+
+  useEffect(() => {
+    const storedTasks = localStorage.getItem(LOCAL_STORAGE_KEY);
+    if (storedTasks) {
+      setTasks(JSON.parse(storedTasks));
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(tasks));
+  }, [tasks]);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -49,31 +63,62 @@ export default function Home() {
     },
   });
 
-  function onSubmit(values: FormValues) {
-    const newTask: Task = {
-      id: crypto.randomUUID(),
-      text: values.taskName,
-    };
+  function handleEditClick(task: Task) {
+    setTaskToEdit(task);
+    form.setValue("taskName", task.text);
+    setIsDialogOpen(true);
+  }
 
-    setTasks([...tasks, newTask]);
+  function onSubmit(values: FormValues) {
+    if (taskToEdit) {
+      const updatedTasks = tasks.map((task) =>
+        task.id === taskToEdit.id ? { ...task, text: values.taskName } : task
+      );
+      setTasks(updatedTasks);
+      setTaskToEdit(null);
+    } else {
+      const newTask: Task = {
+        id: crypto.randomUUID(),
+        text: values.taskName,
+      };
+      setTasks([...tasks, newTask]);
+    }
 
     setIsDialogOpen(false);
     form.reset();
+  }
+
+  function handleDeleteTask(idToDelete: string) {
+    const newTasks = tasks.filter((task) => task.id !== idToDelete);
+    setTasks(newTasks);
   }
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center p-24">
       <h1 className="text-4xl font-bold mb-4">Gerenciador de Tarefas</h1>
 
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+      <Dialog
+        open={isDialogOpen}
+        onOpenChange={(isOpen) => {
+          setIsDialogOpen(isOpen);
+          if (!isOpen) {
+            form.reset();
+            setTaskToEdit(null);
+          }
+        }}
+      >
         <DialogTrigger asChild>
           <Button>Adicionar Nova Tarefa</Button>
         </DialogTrigger>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Adicionar Nova Tarefa</DialogTitle>
+            <DialogTitle>
+              {taskToEdit ? "Editar Tarefa" : "Adicionar nova tarefa"}
+            </DialogTitle>
             <DialogDescription>
-              Digite o nome da sua tarefa abaixo.
+              {taskToEdit
+                ? "Altere o nome da sua tarefa abaixo."
+                : "Digite o nome da sua tarefa abaixo"}
             </DialogDescription>
           </DialogHeader>
 
@@ -99,31 +144,56 @@ export default function Home() {
                 )}
               />
               <Button type="submit" className="w-full">
-                Adicionar
+                {taskToEdit ? "Salvar Alterações" : "Adicionar"}
               </Button>
             </form>
           </Form>
         </DialogContent>
       </Dialog>
 
-      <div className="mt-8 w-full max-w-md">
-        <h2 className="text-2xl font-semibold text-center mb-4">
+      <section
+        className="mt-8 w-full max-w-md"
+        aria-labelledby="task-list-heading"
+      >
+        <h2
+          id="task-list-heading"
+          className="text-2xl font-semibold text-center mb-4"
+        >
           Minhas Tarefas
         </h2>
         {tasks.length > 0 ? (
-          tasks.map((task) => (
-            <div
-              key={task.id}
-              className="flex items-center justify-between p-4 border-b"
-            >
-              <span>{task.text}</span>
-              {/* Botoes de editar e deletar */}
-            </div>
-          ))
+          <ul className="border-t">
+            {tasks.map((task) => (
+              <li
+                key={task.id}
+                className="flex items-center justify-between p-4 border-b"
+              >
+                <span>{task.text}</span>
+                <div className="flex items-center space-x-2">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handleEditClick(task)}
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handleDeleteTask(task.id)}
+                  >
+                    <Trash className="h-4 w-4" />
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
         ) : (
-          <p className="text-center text-gray-500">Nenhuma tarefa ainda.</p>
+          <p className="p-4 text-center text-gray-500 border-t">
+            Nenhuma tarefa ainda.
+          </p>
         )}
-      </div>
+      </section>
     </main>
   );
 }
